@@ -1,0 +1,168 @@
+import express from 'express';
+import http from 'node:http';
+import { WebSocketServer } from 'ws';
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import fs from 'node:fs/promises';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const dataDir = path.join(__dirname, 'data');
+const dataFile = path.join(dataDir, 'rooms.json');
+const app = express();
+app.use(express.json({ limit: '1mb' }));
+
+const clients = new Map();
+const subscriptions = new Map();
+let rooms = [];
+
+async function loadRooms() {
+  try { rooms = JSON.parse(await fs.readFile(dataFile, 'utf8')); } catch { rooms = []; }
+}
+async function saveRooms() {
+  await fs.mkdir(dataDir, { recursive: true });
+  await fs.writeFile(dataFile, JSON.stringify(rooms, null, 2));
+}
+function findRoom(code) { return rooms.find(room => room.code === String(code).toUpperCase()); }
+function makeCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+function jsonError(res, message, status = 400) { return res.status(status).json({ error: message }); }
+function broadcast(code, room) {
+  const normalized = String(code).toUpperCase();
+  for (const [id, socket] of clients) {
+    if (subscriptions.get(id) === normalized && socket.readyState === 1) socket.send(JSON.stringify({ v: 1, type: 'kingdom.room.update', payload: { room: normalized, data: room } }));
+  }
+}
+
+app.get('/api/_healthcheck', (_req, res) => res.json({ message: 'Success' }));
+app.get('/api/rooms/:code', (req, res) => { const room = findRoom(req.params.code); return room ? res.json(room) : jsonError(res, 'room_not_found', 404); });
+
+app.post('/api/rooms', async (req, res) => {
+  const { playerId, name, rank, mode } = req.body || {};
+  if (!playerId || !name) return jsonError(res, 'playerId and name are required');
+  let code = makeCode();
+  while (findRoom(code)) code = makeCode();
+  const actualMode = mode === 'coop' ? 'coop' : mode === 'group' ? 'group' : 'battle';
+  const group = actualMode === 'group' ? { rosters: { host: null, guest: null }, roles: { host: {}, guest: {} }, turn: 0, phase: 'roulette', confirmed: [] } : undefined;
+  const room = { code, host: { id: playerId, name: String(name).slice(0, 16), character: null, rank: String(rank || '一般兵').slice(0, 16) }, guest: null, mode: actualMode, status: actualMode === 'group' ? 'group_roster' : 'waiting', winner: null, hostResult: null, guestResult: null, coopRound: 0, coopReady: [], group, createdAt: Date.now() };
+  rooms.push(room); await saveRooms(); res.json(room);
+});
+
+app.post('/api/rooms/join', async (req, res) => {
+  const { code, playerId, name, rank } = req.body || {};
+  if (!code || !playerId || !name) return jsonError(res, 'code, playerId and name are required');
+  const room = findRoom(code);
+  if (!room) return jsonError(res, 'room_not_found', 404);
+  if (room.guest) return jsonError(res, 'room_full', 409);
+  if (room.host.id === playerId) return jsonError(res, 'same_player', 409);
+  room.guest = { id: playerId, name: String(name).slice(0, 16), character: null, rank: String(rank || '一般兵').slice(0, 16) };
+  if (room.mode === 'group') { room.status = 'group_roster'; room.group ??= { rosters: { host: null, guest: null }, roles: { host: {}, guest: {} }, turn: 0, phase: 'roulette', confirmed: [] }; }
+  else room.status = 'diagnosis';
+  await saveRooms(); broadcast(room.code, room); res.json(room);
+});
+
+app.post('/api/rooms/group-roster', async (req, res) => {
+  const { code, playerId, roster } = req.body || {};
+  if (!code || !playerId || !Array.isArray(roster) || roster.length !== 3) return jsonError(res, 'invalid_group_roster');
+  const room = findRoom(code);
+  if (!room || room.mode !== 'group' || !room.guest || !room.group) return jsonError(res, 'group_not_ready', 409);
+  if (![room.host.id, room.guest.id].includes(playerId)) return jsonError(res, 'not_in_room', 403);
+  const unique = [...new Set(roster.map(String))];
+  if (unique.length !== 3) return jsonError(res, 'duplicate_group_roster');
+  const key = playerId === room.host.id ? 'host' : 'guest';
+  room.group.rosters[key] = unique;
+  if (room.group.rosters.host && room.group.rosters.guest) { room.group.phase = 'pick'; room.status = 'group_pick'; }
+  await saveRooms(); broadcast(room.code, room); res.json(room);
+});
+
+app.post('/api/rooms/group-pick', async (req, res) => {
+  const { code, playerId, character, role } = req.body || {};
+  const validRoles = ['先鋒', '副将', '大将'];
+  if (!code || !playerId || !character || !validRoles.includes(role)) return jsonError(res, 'invalid_group_pick');
+  const room = findRoom(code);
+  if (!room || room.mode !== 'group' || !room.guest || !room.group || !room.group.rosters.host || !room.group.rosters.guest) return jsonError(res, 'group_not_ready', 409);
+  if (![room.host.id, room.guest.id].includes(playerId)) return jsonError(res, 'not_in_room', 403);
+  const sequence = [room.host.id, room.guest.id, room.guest.id, room.host.id, room.host.id, room.guest.id];
+  if (sequence[room.group.turn] !== playerId) return jsonError(res, 'not_your_turn', 409);
+  const key = playerId === room.host.id ? 'host' : 'guest';
+  if (!room.group.rosters[key].includes(character)) return jsonError(res, 'character_not_available', 409);
+  const roles = room.group.roles[key];
+  if (Object.values(roles).includes(role) || roles[character]) return jsonError(res, 'role_already_taken', 409);
+  roles[character] = role;
+  room.group.turn += 1;
+  room.group.phase = room.group.turn >= 6 ? 'confirm' : 'pick';
+  room.status = room.group.phase === 'confirm' ? 'group_confirm' : 'group_pick';
+  await saveRooms(); broadcast(room.code, room); res.json(room);
+});
+
+app.post('/api/rooms/group-confirm', async (req, res) => {
+  const { code, playerId } = req.body || {};
+  if (!code || !playerId) return jsonError(res, 'invalid_group_confirm');
+  const room = findRoom(code);
+  if (!room || room.mode !== 'group' || !room.guest || !room.group || room.group.phase !== 'confirm') return jsonError(res, 'group_not_ready', 409);
+  if (![room.host.id, room.guest.id].includes(playerId)) return jsonError(res, 'not_in_room', 403);
+  room.group.confirmed = [...new Set([...room.group.confirmed, playerId])];
+  if (room.group.confirmed.length >= 2) { room.group.phase = 'battle'; room.status = 'battle'; }
+  await saveRooms(); broadcast(room.code, room); res.json(room);
+});
+
+app.post('/api/rooms/coop-next', async (req, res) => {
+  const { code, playerId } = req.body || {};
+  const room = findRoom(code);
+  if (!room || room.mode !== 'coop' || !room.guest || !room.hostResult || !room.guestResult) return jsonError(res, 'coop_not_ready', 409);
+  if (![room.host.id, room.guest.id].includes(playerId)) return jsonError(res, 'not_in_room', 403);
+  if (room.coopReady.includes(playerId)) return res.json(room);
+  room.coopReady.push(playerId);
+  if (room.coopReady.length >= 2) { room.coopRound += 1; room.coopReady = []; }
+  room.status = 'battle';
+  await saveRooms(); broadcast(room.code, room); res.json(room);
+});
+
+app.post('/api/rooms/rematch', async (req, res) => {
+  const { code, playerId } = req.body || {};
+  const room = findRoom(code);
+  if (!room || !room.guest) return jsonError(res, 'room_not_ready', 409);
+  if (![room.host.id, room.guest.id].includes(playerId)) return jsonError(res, 'not_in_room', 403);
+  room.status = room.mode === 'group' ? 'group_roster' : 'diagnosis'; room.winner = null; room.hostResult = null; room.guestResult = null; room.coopRound = 0; room.coopReady = [];
+  if (room.mode === 'group') room.group = { rosters: { host: null, guest: null }, roles: { host: {}, guest: {} }, turn: 0, phase: 'roulette', confirmed: [] };
+  await saveRooms(); broadcast(room.code, room); res.json(room);
+});
+
+app.post('/api/rooms/result', async (req, res) => {
+  const { code, playerId, character, stats, total } = req.body || {};
+  if (!code || !playerId || !character || !Array.isArray(stats) || typeof total !== 'number') return jsonError(res, 'invalid_result');
+  const room = findRoom(code);
+  if (!room || !room.guest) return jsonError(res, 'room_not_ready', 409);
+  if (![room.host.id, room.guest.id].includes(playerId)) return jsonError(res, 'not_in_room', 403);
+  const result = { character, stats, total, submittedAt: Date.now() };
+  if (playerId === room.host.id) room.hostResult = result; else room.guestResult = result;
+  if (room.hostResult && room.guestResult) room.status = 'reveal';
+  await saveRooms(); broadcast(room.code, room); res.json(room);
+});
+
+app.post('/api/rooms/subscribe', (req, res) => {
+  const { code, connection_id } = req.body || {};
+  if (!code || !connection_id) return jsonError(res, 'code and connection_id are required');
+  subscriptions.set(connection_id, String(code).toUpperCase()); res.json({ ok: true });
+});
+app.post('/api/rooms/unsubscribe', (req, res) => { const { connection_id } = req.body || {}; if (connection_id) subscriptions.delete(connection_id); res.json({ ok: true }); });
+
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server, path: '/ws' });
+wss.on('connection', (socket, req) => {
+  const url = new URL(req.url, 'http://localhost');
+  const connectionId = url.searchParams.get('connection_id') || randomUUID();
+  clients.set(connectionId, socket);
+  socket.on('close', () => { clients.delete(connectionId); subscriptions.delete(connectionId); });
+});
+
+app.use(express.static(path.join(__dirname, 'dist')));
+app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
+
+await loadRooms();
+const port = Number(process.env.PORT || 3000);
+server.listen(port, '0.0.0.0', () => console.log(`KINGDOM 天下統一録 listening on ${port}`));
