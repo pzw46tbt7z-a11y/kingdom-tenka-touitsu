@@ -5,6 +5,8 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const TARGET = 'https://kingdom-g0f9yi.v2.appdeploy.ai';
 
+app.get('/health', (_req, res) => res.status(200).type('text/plain').send('ok'));
+
 app.use(async (req, res) => {
   try {
     const target = TARGET + req.originalUrl;
