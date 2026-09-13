@@ -1,3 +1,4 @@
+// Three-arm battle sync v2: force Railway GitHub autodeploy of the robust turn-recovery patch.
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 
