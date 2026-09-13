@@ -1,4 +1,4 @@
-// Three-arm battle sync v2: force Railway GitHub autodeploy of the robust turn-recovery patch.
+// Three-arm battle sync v3: Railway owns the group-pick state so the online flow cannot desync on upstream errors.
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 
@@ -25,6 +25,111 @@ app.post('/api/rooms/group-sync-next', (req, res) => {
   groupNextSignals.set(key, current); return res.json({ ready: current.ready });
 });
 app.get('/api/rooms/group-sync-next', (req, res) => { pruneGroupSignals(); const code = String(req.query?.code || '').trim().toUpperCase(); const battleNo = Number(req.query?.battleNo || 0); const current = groupNextSignals.get(groupNextKey(code, battleNo)); return res.json({ ready: Boolean(current?.ready) }); });
+
+// Railway-side authoritative state for the three-arm online draft.
+// The upstream AppDeploy room API is still used for room creation/joining,
+// but group roster/pick/confirm state is kept here so a single upstream 500
+// cannot freeze one player's screen or invalidate the draft turn.
+const groupStates = new Map();
+const groupRoles = ['先鋒', '副将', '大将'];
+const groupPickers = ['host', 'guest', 'guest', 'host', 'host', 'guest'];
+const groupStateTtlMs = 30 * 60 * 1000;
+function groupStateKey(code) { return String(code || '').trim().toUpperCase(); }
+function pruneGroupStates() { const now = Date.now(); for (const [key, state] of groupStates) { if (now - state.updatedAt > groupStateTtlMs) groupStates.delete(key); } }
+async function upstreamRoom(code) {
+  const r = await fetch(`${TARGET}/api/rooms/${encodeURIComponent(code)}`);
+  if (!r.ok) return null;
+  return r.json();
+}
+function stateFor(code, room) {
+  pruneGroupStates();
+  const key = groupStateKey(code);
+  let state = groupStates.get(key);
+  if (!state) {
+    state = { hostId: room?.host?.id || '', guestId: room?.guest?.id || '', rosters: { host: [], guest: [] }, roles: { host: {}, guest: {} }, turn: 0, phase: 'pick', confirmed: { host: false, guest: false }, updatedAt: Date.now() };
+    groupStates.set(key, state);
+  } else {
+    state.hostId = room?.host?.id || state.hostId;
+    state.guestId = room?.guest?.id || state.guestId;
+    state.updatedAt = Date.now();
+  }
+  return state;
+}
+function mergeGroup(room, state) {
+  return { ...room, group: { ...(room?.group || {}), phase: state.phase, turn: state.turn, rosters: state.rosters, roles: state.roles, confirmed: state.confirmed } };
+}
+function playerKey(state, playerId) { if (playerId === state.hostId) return 'host'; if (playerId === state.guestId) return 'guest'; return null; }
+
+app.get('/api/rooms/:code', async (req, res) => {
+  try {
+    const code = groupStateKey(req.params.code);
+    const room = await upstreamRoom(code);
+    if (!room) return res.status(404).json({ error: 'room not found' });
+    const state = groupStates.get(code);
+    return res.status(200).json(state ? mergeGroup(room, state) : room);
+  } catch (error) { console.error('room state proxy error', error); return res.status(502).json({ error: 'room unavailable' }); }
+});
+
+app.post('/api/rooms/group-roster', async (req, res) => {
+  try {
+    const code = groupStateKey(req.body?.code);
+    const playerId = String(req.body?.playerId || '').trim();
+    const roster = Array.isArray(req.body?.roster) ? req.body.roster.map(String).filter(Boolean).slice(0, 3) : [];
+    if (!code || !playerId || roster.length !== 3 || new Set(roster).size !== 3) return res.status(400).json({ error: 'invalid roster' });
+    const room = await upstreamRoom(code);
+    if (!room?.host || !room?.guest) return res.status(409).json({ error: 'both players are required' });
+    const state = stateFor(code, room);
+    const key = playerKey(state, playerId);
+    if (!key) return res.status(403).json({ error: 'player is not in this room' });
+    state.rosters[key] = roster;
+    state.updatedAt = Date.now();
+    return res.json(mergeGroup(room, state));
+  } catch (error) { console.error('group roster error', error); return res.status(500).json({ error: 'group roster failed' }); }
+});
+
+app.post('/api/rooms/group-pick', async (req, res) => {
+  try {
+    const code = groupStateKey(req.body?.code);
+    const playerId = String(req.body?.playerId || '').trim();
+    const character = String(req.body?.character || '').trim();
+    const requestedRole = String(req.body?.role || '').trim();
+    const room = await upstreamRoom(code);
+    if (!room?.host || !room?.guest) return res.status(409).json({ error: 'both players are required' });
+    const state = stateFor(code, room);
+    const key = playerKey(state, playerId);
+    if (!key) return res.status(403).json({ error: 'player is not in this room' });
+    if (state.phase !== 'pick') return res.status(409).json({ error: 'picking is already complete', room: mergeGroup(room, state) });
+    const expectedKey = groupPickers[state.turn];
+    if (key !== expectedKey) return res.status(409).json({ error: 'not your turn', room: mergeGroup(room, state) });
+    const expectedRole = groupRoles[Math.floor(state.turn / 2)];
+    if (requestedRole && requestedRole !== expectedRole) return res.status(409).json({ error: 'role order is fixed', room: mergeGroup(room, state) });
+    const roster = state.rosters[key] || [];
+    if (!roster.includes(character)) return res.status(409).json({ error: 'character is not in your roster', room: mergeGroup(room, state) });
+    if (Object.prototype.hasOwnProperty.call(state.roles[key], character)) return res.status(409).json({ error: 'character already picked', room: mergeGroup(room, state) });
+    state.roles[key][character] = expectedRole;
+    state.turn += 1;
+    if (state.turn >= 6) state.phase = 'confirm';
+    state.updatedAt = Date.now();
+    return res.json(mergeGroup(room, state));
+  } catch (error) { console.error('group pick error', error); return res.status(500).json({ error: 'group pick failed' }); }
+});
+
+app.post('/api/rooms/group-confirm', async (req, res) => {
+  try {
+    const code = groupStateKey(req.body?.code);
+    const playerId = String(req.body?.playerId || '').trim();
+    const room = await upstreamRoom(code);
+    if (!room?.host || !room?.guest) return res.status(409).json({ error: 'both players are required' });
+    const state = stateFor(code, room);
+    const key = playerKey(state, playerId);
+    if (!key) return res.status(403).json({ error: 'player is not in this room' });
+    if (state.phase === 'pick') return res.status(409).json({ error: 'picking is not finished', room: mergeGroup(room, state) });
+    state.confirmed[key] = true;
+    if (state.confirmed.host && state.confirmed.guest) state.phase = 'battle';
+    state.updatedAt = Date.now();
+    return res.json(mergeGroup(room, state));
+  } catch (error) { console.error('group confirm error', error); return res.status(500).json({ error: 'group confirm failed' }); }
+});
 
 app.use(async (req, res) => {
   try {
