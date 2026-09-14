@@ -8,5 +8,42 @@
   <body>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
+    <script>
+      (function(){
+        var statNames=['武力','知力','統率','魅力','胆力'];
+        var seen=new WeakSet();
+        function patch(){
+          var duel=document.querySelector('.duel');
+          var rounds=document.querySelector('.rounds');
+          var result=document.querySelector('.battle-result');
+          var next=document.querySelector('#next');
+          var badge=document.querySelector('.badge');
+          if(!duel||!rounds||!result||!next||!badge||!(badge.textContent||'').includes('三軍決戦')||seen.has(next))return;
+          var rows=Array.from(rounds.querySelectorAll(':scope > div'));
+          if(rows.length!==5)return;
+          seen.add(next);
+          var values=rows.map(function(row){var strong=row.querySelector('strong');var parts=(strong?.textContent||'').split('−').map(function(x){return Number(x.trim())});return {a:parts[0]||0,b:parts[1]||0}});
+          rounds.style.display='none';
+          result.style.display='none';
+          var stage=document.createElement('div');
+          stage.id='sequential-stat-battle';
+          stage.style.cssText='margin:18px 0;padding:20px;border:1px solid #d5ad55;border-radius:16px;background:linear-gradient(135deg,#21160c,#0d0d0f);color:#fff0bd;text-align:center';
+          rounds.parentElement.insertBefore(stage,rounds);
+          var index=0;
+          function render(){
+            var s=values[index], name=statNames[index], winner=s.a===s.b?'引き分け':s.a>s.b?'左の将が勝利':'右の将が勝利';
+            stage.innerHTML='<div style="font-size:13px;opacity:.75;margin-bottom:8px">能力戦 '+(index+1)+' / 5</div><h3 style="margin:6px 0 14px;font-size:24px">'+name+'戦</h3><div style="display:flex;justify-content:center;align-items:center;gap:22px;font-size:22px"><strong>'+s.a+'</strong><span>−</span><strong>'+s.b+'</strong></div><p style="margin:14px 0 16px;font-weight:700">'+winner+'</p>'+(index<4?'<button id="nextStat" style="width:100%;padding:13px;border-radius:12px;border:0;background:#d5ad55;color:#17110a;font-weight:800">次の能力へ</button>':'<button id="showFinal" style="width:100%;padding:13px;border-radius:12px;border:0;background:#d5ad55;color:#17110a;font-weight:800">5能力の決着を見る</button>');
+            var b=document.querySelector('#nextStat');
+            if(b)b.addEventListener('click',function(){index++;render()});
+            var f=document.querySelector('#showFinal');
+            if(f)f.addEventListener('click',function(){stage.remove();result.style.display='block';next.style.display='inline-flex'});
+          }
+          next.style.display='none';
+          render();
+        }
+        new MutationObserver(patch).observe(document.body,{childList:true,subtree:true});
+        patch();
+      })();
+    </script>
   </body>
 </html>
