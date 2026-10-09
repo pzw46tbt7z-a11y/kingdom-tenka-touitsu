@@ -47,6 +47,9 @@ app.post('/api/alter-history', async (req, res) => {
 - 政治・軍事・経済・社会・文化・外交への影響をそれぞれ具体的に分析。無関係な項目は理由を説明する。
 - 学習のため、重要用語を平易に説明し、史実なら年代や人物名を可能な限り正確にする。根拠のない統計や正確すぎる予測値は作らない。
 - 目標達成の可能性だけでなく、トレードオフと失敗シナリオも述べる。
+- 回答の冒頭に「前提知識」を必ず作る。反実仮想の分析に必要な史実を、改変案に直結する具体例・人物・制度・年代とともに最低5項目、各項目2〜4文で説明する。一般的な時代紹介だけで終わらせない。
+- 中国の秦・戦国時代を扱う場合、商鞅の変法、秦の軍事・行政・農業基盤、戦国七雄の勢力関係、統一過程、統一後の負担と秦滅亡など、選択された時期に関係する背景を必ず説明する。時代が異なる場合はその時代固有の前提知識に置き換える。
+- 前提知識の各項目で「確認できる史実」と「研究上の議論」を区別し、その史実が今回の改変案にどう関係するかを明示する。
 文明: ${civilization}
 時代ID: ${era}
 ユーザーの改変案（最優先）: 「${intervention.trim()}」
@@ -57,6 +60,7 @@ app.post('/api/alter-history', async (req, res) => {
 {
  "title":"改変案を具体的に含む短い題名",
  "summary":"改変案がなぜ分岐点になるか、史実の背景と主な帰結を含む200〜350字程度の要約",
+ "background":[{"heading":"前提知識の項目","fact":"具体的な史実・年代・制度・人物を2〜4文で説明","relevance":"その史実が今回の改変案にどう関係するか"},{"heading":"...","fact":"...","relevance":"..."},{"heading":"...","fact":"...","relevance":"..."},{"heading":"...","fact":"...","relevance":"..."},{"heading":"...","fact":"...","relevance":"..."}],
  "timeline":[{"year":"直後","title":"...","detail":"史実の制度・人物・資源に結びついた因果を説明"},{"year":"数年後","title":"...","detail":"..."},{"year":"10〜20年後","title":"...","detail":"..."},{"year":"数十年後","title":"...","detail":"..."}],
  "effects":[{"label":"政治","value":"短い評価","detail":"具体的な制度や勢力への影響"},{"label":"軍事","value":"短い評価","detail":"兵站・兵制・同盟・戦術など"},{"label":"経済","value":"短い評価","detail":"税・農業・交易・労働・財政など"},{"label":"社会","value":"短い評価","detail":"階層・生活・地域差など"},{"label":"文化","value":"短い評価","detail":"教育・宗教・言語・技術など"},{"label":"外交","value":"短い評価","detail":"周辺国・同盟・敵対勢力への反応"}],
  "causalChain":["改変案から直接起きる最初の変化","具体的な利害関係者が反応する理由","その反応が制度・戦争・経済へ波及する仕組み","長期結果と、それが起こらない条件"],
@@ -102,11 +106,12 @@ JSONは指定スキーマを満たすこと。各項目は薄い一般論にせ�
     }
     const cleaned = raw.replace(/^\uFEFF/, '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     const result = JSON.parse(cleaned);
-    if (!result.title || !Array.isArray(result.timeline) || !Array.isArray(result.effects) ||
+    if (!result.title || !Array.isArray(result.background) || !Array.isArray(result.timeline) || !Array.isArray(result.effects) ||
         !Array.isArray(result.causalChain) || !Array.isArray(result.learningNotes) ||
         !result.compareToReal || !result.uncertainty) {
       throw new Error('AI output did not match the expected structure');
     }
+    result.background = result.background.slice(0, 8);
     result.timeline = result.timeline.slice(0, 6);
     result.effects = result.effects.slice(0, 8);
     result.causalChain = result.causalChain.slice(0, 6);
