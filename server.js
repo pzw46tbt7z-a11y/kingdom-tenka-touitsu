@@ -77,8 +77,8 @@ JSONは指定スキーマを満たすこと。各項目は薄い一般論にせ�
     let lastStatus = 0;
     let lastDetail = '';
     // Primary model can temporarily be overloaded; retry and fall back to Flash-Lite.
-    for (const model of ['gemini-3.8-flash', 'gemini-3.8-flash-lite']) {
-      for (let attempt = 0; attempt < 2; attempt++) {
+    for (const model of ['gemini-3.8-flash-lite', 'gemini-3.8-flash']) {
+      for (let attempt = 0; attempt < 1; attempt++) {
         response = await fetch(
           'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey),
           {
@@ -102,7 +102,7 @@ JSONは指定スキーマを満たすこと。各項目は薄い一般論にせ�
         lastDetail = payload?.error?.message || 'AI provider request failed';
         console.error('Gemini API error:', model, response.status, lastDetail);
         if (![429, 500, 502, 503, 504].includes(response.status)) break;
-        if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 1200));
+        // Fail fast on overload instead of keeping the user waiting.
       }
       if (response?.ok) break;
       if (lastStatus !== 429 && lastStatus !== 500 && lastStatus !== 502 && lastStatus !== 503 && lastStatus !== 504) break;
