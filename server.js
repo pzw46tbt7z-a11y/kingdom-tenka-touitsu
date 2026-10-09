@@ -101,7 +101,7 @@ JSONは指定スキーマを満たすこと。各項目は薄い一般論にせ�
         lastStatus = response.status;
         lastDetail = payload?.error?.message || 'AI provider request failed';
         console.error('Gemini API error:', model, response.status, lastDetail);
-        if (![429, 500, 502, 503, 504].includes(response.status)) break;
+        if (![404, 429, 500, 502, 503, 504].includes(response.status)) break;
         // Fail fast on overload instead of keeping the user waiting.
       }
       if (response?.ok) break;
