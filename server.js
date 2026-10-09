@@ -77,7 +77,7 @@ JSONは指定スキーマを満たすこと。各項目は薄い一般論にせ�
     let lastStatus = 0;
     let lastDetail = '';
     // Primary model can temporarily be overloaded; retry and fall back to Flash-Lite.
-    for (const model of ['gemini-3.8-flash', 'gemini-3.8-flash-lite']) {
+    for (const model of ['gemini-2.5-flash', 'gemini-2.5-flash-lite']) {
       for (let attempt = 0; attempt < 2; attempt++) {
         response = await fetch(
           'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey),
