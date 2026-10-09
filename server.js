@@ -89,7 +89,7 @@ JSONは指定スキーマを満たすこと。各項目は薄い一般論にせ�
               contents: [{ role: 'user', parts: [{ text: prompt }] }],
               generationConfig: {
                 temperature: 0.75,
-                maxOutputTokens: 2000,
+                maxOutputTokens: 6000,
                 responseMimeType: 'application/json'
               }
             }),
