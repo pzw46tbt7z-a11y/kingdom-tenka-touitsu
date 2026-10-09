@@ -89,11 +89,11 @@ JSONは指定スキーマを満たすこと。各項目は薄い一般論にせ�
               contents: [{ role: 'user', parts: [{ text: prompt }] }],
               generationConfig: {
                 temperature: 0.75,
-                maxOutputTokens: 6500,
+                maxOutputTokens: 2600,
                 responseMimeType: 'application/json'
               }
             }),
-            signal: AbortSignal.timeout(90000)
+            signal: AbortSignal.timeout(12000)
           }
         );
         payload = await response.json();
