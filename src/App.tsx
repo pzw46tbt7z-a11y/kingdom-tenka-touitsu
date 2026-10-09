@@ -255,8 +255,22 @@ const EXTRA_ERAS:Record<string,Era[]> = {
 };
 for (const civ of CIVILIZATIONS) {
  const additions = EXTRA_ERAS[civ.id] || [];
- const existing = new Set(civ.eras.map(e=>e.id));
- civ.eras.push(...additions.filter(e=>!existing.has(e.id)));
+ const existingIds = new Set(civ.eras.map(e=>e.id));
+ const normalizeEraName = (name: string) => name
+   .replace(/[・･（）()「」『』\s]/g, '')
+   .replace(/前期|中期|後期|初期|末期|前半|後半/g, '');
+ const existingNames = civ.eras.map(e => normalizeEraName(e.name));
+ civ.eras.push(...additions.filter(e => {
+   if (existingIds.has(e.id)) return false;
+   const candidate = normalizeEraName(e.name);
+   // 同一文明内で、同じ時代名や「○○時代・前期」のような細分名が
+   // 既存の時代と重なる場合は二重表示しない。
+   return !existingNames.some(name =>
+     name === candidate ||
+     (name.length >= 3 && candidate.includes(name)) ||
+     (candidate.length >= 3 && name.includes(candidate))
+   );
+ }));
 }
 
 
