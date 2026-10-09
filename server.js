@@ -72,31 +72,49 @@ app.post('/api/alter-history', async (req, res) => {
 JSONは指定スキーマを満たすこと。各項目は薄い一般論にせず、ユーザーの改変案に結びつけて具体的に書く。`;
 
   try {
-    const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(apiKey),
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: 'あなたは厳密で分かりやすい歴史教育AIです。史実と反実仮想を明確に分離し、ユーザーの入力を必ず中心に据えてください。' }] },
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.75,
-            maxOutputTokens: 6500,
-            responseMimeType: 'application/json'
+    let response;
+    let payload;
+    let lastStatus = 0;
+    let lastDetail = '';
+    // Primary model can temporarily be overloaded; retry and fall back to Flash-Lite.
+    for (const model of ['gemini-2.5-flash', 'gemini-2.5-flash-lite']) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        response = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: 'あなたは厳密で分かりやすい歴史教育AIです。史実と反実仮想を明確に分離し、ユーザーの入力を必ず中心に据えてください。' }] },
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.75,
+                maxOutputTokens: 6500,
+                responseMimeType: 'application/json'
+              }
+            }),
+            signal: AbortSignal.timeout(90000)
           }
-        }),
-        signal: AbortSignal.timeout(90000)
+        );
+        payload = await response.json();
+        if (response.ok) break;
+        lastStatus = response.status;
+        lastDetail = payload?.error?.message || 'AI provider request failed';
+        console.error('Gemini API error:', model, response.status, lastDetail);
+        if (![429, 500, 502, 503, 504].includes(response.status)) break;
+        if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 1200));
       }
-    );
-    const payload = await response.json();
-    if (!response.ok) {
-      const detail = payload?.error?.message || 'AI provider request failed';
-      console.error('Gemini API error:', response.status, detail);
+      if (response?.ok) break;
+      if (lastStatus !== 429 && lastStatus !== 500 && lastStatus !== 502 && lastStatus !== 503 && lastStatus !== 504) break;
+    }
+    if (!response?.ok) {
+      console.error('Gemini fallback exhausted:', lastStatus, lastDetail);
       return res.status(502).json({
-        error: response.status === 429
+        error: lastStatus === 429
           ? 'AIの無料利用枠に達した可能性があります。少し待って再試行してください。'
-          : 'AIサービスへの接続に失敗しました。APIキーと利用設定を確認してください。'
+          : lastStatus === 503 || lastStatus === 504
+            ? 'AIサービスが混雑しています。少し待ってもう一度試してください。'
+            : 'AIサービスへの接続に失敗しました。APIキーと利用設定を確認してください。'
       });
     }
     const raw = payload?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim();
