@@ -60,7 +60,6 @@ app.post('/api/alter-history', async (req, res) => {
 {
  "title":"改変案を具体的に含む短い題名",
  "summary":"改変案がなぜ分岐点になるか、史実の背景と主な帰結を含む200〜350字程度の要約",
- "background":[{"heading":"前提となる史実・制度・人物","fact":"年代や具体的な事実を含む説明を120〜200字程度","relevance":"その事実が今回の改変の可能性を左右する理由を具体的に説明"}],
  "background":[{"heading":"前提知識の項目","fact":"具体的な史実・年代・制度・人物を2〜4文で説明","relevance":"その史実が今回の改変案にどう関係するか"},{"heading":"...","fact":"...","relevance":"..."},{"heading":"...","fact":"...","relevance":"..."},{"heading":"...","fact":"...","relevance":"..."},{"heading":"...","fact":"...","relevance":"..."}],
  "timeline":[{"year":"直後","title":"...","detail":"史実の制度・人物・資源に結びついた因果を説明"},{"year":"数年後","title":"...","detail":"..."},{"year":"10〜20年後","title":"...","detail":"..."},{"year":"数十年後","title":"...","detail":"..."}],
  "effects":[{"label":"政治","value":"短い評価","detail":"具体的な制度や勢力への影響"},{"label":"軍事","value":"短い評価","detail":"兵站・兵制・同盟・戦術など"},{"label":"経済","value":"短い評価","detail":"税・農業・交易・労働・財政など"},{"label":"社会","value":"短い評価","detail":"階層・生活・地域差など"},{"label":"文化","value":"短い評価","detail":"教育・宗教・言語・技術など"},{"label":"外交","value":"短い評価","detail":"周辺国・同盟・敵対勢力への反応"}],
@@ -74,7 +73,7 @@ JSONは指定スキーマを満たすこと。各項目は薄い一般論にせ�
 
   try {
     const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=' + encodeURIComponent(apiKey),
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -113,7 +112,6 @@ JSONは指定スキーマを満たすこと。各項目は薄い一般論にせ�
       throw new Error('AI output did not match the expected structure');
     }
     result.background = result.background.slice(0, 8);
-    result.background = result.background.slice(0, 6);
     result.timeline = result.timeline.slice(0, 6);
     result.effects = result.effects.slice(0, 8);
     result.causalChain = result.causalChain.slice(0, 6);
