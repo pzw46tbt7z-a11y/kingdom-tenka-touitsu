@@ -392,7 +392,28 @@ function App() {
   const studyCivEras=studyQuizCiv==='all'?allEras:allEras.filter(e=>e.civId===studyQuizCiv);
   const studyPoolBase=studyWrongOnly?studyCivEras.filter(e=>studyStats.wrongIds.includes(e.id)):studyCivEras;
   const studyQuestionEra=studyPoolBase.length?studyPoolBase[studyIndex%studyPoolBase.length]:null;
-  const studyQuestionOptions=studyQuestionEra?(()=>{const facts=studyQuestionEra.keyFacts;const correctText=facts[studyIndex%facts.length]||studyQuestionEra.overview;const sameCiv=allEras.filter(e=>e.civId===studyQuestionEra.civId&&e.id!==studyQuestionEra.id).flatMap(e=>e.keyFacts);const otherCivs=allEras.filter(e=>e.civId!==studyQuestionEra.civId).flatMap(e=>e.keyFacts);const pool=studyDifficulty==='advanced'?[...sameCiv,...otherCivs]:studyDifficulty==='intermediate'?[...otherCivs,...sameCiv]:otherCivs;const distractorCount=studyDifficulty==='beginner'?2:3;const distractors=Array.from(new Set(pool.filter(t=>t!==correctText&&!facts.includes(t)))).slice((studyIndex*3)%Math.max(1,pool.length)).concat(Array.from(new Set(pool.filter(t=>t!==correctText&&!facts.includes(t))))).slice(0,distractorCount).map(text=>({text,correct:false}));const opts=[{text:correctText,correct:true},...distractors];return opts.sort((a,b)=>((a.text.length+studyIndex*7)%17)-((b.text.length+studyIndex*7)%17));})():[];
+  const studyQuestionOptions=studyQuestionEra?(()=>{
+    const facts=studyQuestionEra.keyFacts;
+    const correctText=facts[studyIndex%facts.length]||studyQuestionEra.overview;
+    const sameCiv=allEras.filter(e=>e.civId===studyQuestionEra.civId&&e.id!==studyQuestionEra.id).flatMap(e=>e.keyFacts);
+    const otherCivs=allEras.filter(e=>e.civId!==studyQuestionEra.civId).flatMap(e=>e.keyFacts);
+    const unique=(items:string[])=>Array.from(new Set(items.filter(t=>t!==correctText&&!facts.includes(t))));
+    const samePool=unique(sameCiv);
+    const otherPool=unique(otherCivs);
+    const distractorCount=studyDifficulty==='beginner'?2:3;
+    // 初級でも同じ文明の別時代から選択肢を作り、文明名だけで正解が分からないようにする。
+    // 中級は同文明と他文明を混ぜ、上級は時代の近い知識も含めて判別を難しくする。
+    let pool=studyDifficulty==='beginner'
+      ?[...samePool,...otherPool]
+      :studyDifficulty==='intermediate'
+        ?[...samePool.slice(0,Math.ceil(samePool.length/2)),...otherPool,...samePool.slice(Math.ceil(samePool.length/2))]
+        :[...samePool,...otherPool];
+    const score=(value:string)=>Array.from(value).reduce((sum,ch)=>sum+ch.charCodeAt(0),0);
+    pool=unique(pool).sort((a,b)=>((score(a)*(studyIndex*13+7))%997)-((score(b)*(studyIndex*13+7))%997));
+    const distractors=pool.slice(0,distractorCount).map(text=>({text,correct:false}));
+    const opts=[{text:correctText,correct:true},...distractors];
+    return opts.sort((a,b)=>((score(a.text)*(studyIndex*17+11))%991)-((score(b.text)*(studyIndex*17+11))%991));
+  })():[];
   const setEra=(id:string)=>{setEraId(id);setOutcomes([]);setActiveId('');setAttempts(mode==='challenge'?1:3);setErrorMessage('');};
 
   return <div className="app-shell">
