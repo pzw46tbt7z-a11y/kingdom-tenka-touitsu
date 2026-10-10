@@ -17,6 +17,32 @@ const CIVS = {
   greece: '古代ギリシャ史', rome: '古代ローマ史', mongol: 'モンゴル帝国史'
 };
 
+app.post('/api/study-writing', async (req, res) => {
+  const { civName, eraName, years, overview, politics, society, economy, culture, keyFacts, answer } = req.body || {};
+  if (typeof answer !== 'string' || !answer.trim()) return res.status(400).json({ error: '答案を書いてから送信してください。' });
+  if (answer.length > 2500) return res.status(400).json({ error: '答案は2500文字以内にしてください。' });
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'AI接続の準備中です。設定を確認してください。' });
+  const safe = (v, n=1600) => typeof v === 'string' ? v.slice(0,n) : '';
+  const facts = Array.isArray(keyFacts) ? keyFacts.filter(v => typeof v === 'string').slice(0,8).join(' / ') : '';
+  const prompt = 'あなたは中高生向けの歴史論述コーチです。日本語でやさしく具体的に添削してください。\n' +
+    '文明：' + safe(civName,100) + '／時代：' + safe(eraName,100) + '（' + safe(years,120) + '）\n' +
+    '基礎データ（添削の根拠）：概要 ' + safe(overview) + '／政治 ' + safe(politics) + '／社会 ' + safe(society) + '／経済 ' + safe(economy) + '／文化 ' + safe(culture) + '\n' +
+    '重要ポイント：' + facts + '\n生徒の答案：「' + answer.trim() + '」\n' +
+    '600字以内で見出しと箇条書きを使って回答：100点満点（史実の正確さ40、因果関係30、具体性20、明確さ10）の評価、具体的な良い点1〜2個、誤りがあれば修正案（なければ捏造しない）、因果関係の評価、追加すべき重要語句を最大3つ、120〜220字の改善例、次に考える質問1つ。短い答案を長さだけで減点しない。基礎データにない内容を史実と断定せず、不確実性は明示する。';
+  try {
+    let response, payload, status=0;
+    for (const model of ['gemini-3.5-flash-lite','gemini-3.5-flash']) {
+      response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(apiKey), { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:0.3,maxOutputTokens:1400}}), signal:AbortSignal.timeout(25000) });
+      payload = await response.json(); if (response.ok) break; status=response.status; if (![404,429,500,502,503,504].includes(status)) break;
+    }
+    if (!response || !response.ok) return res.status(502).json({error:status===429?'AIの利用枠に達した可能性があります。少し待って再試行してください。':'AI添削に接続できませんでした。少し待って再試行してください。'});
+    const feedback=payload && payload.candidates && payload.candidates[0] && payload.candidates[0].content && payload.candidates[0].content.parts.map(p=>p.text||'').join('').trim();
+    if (!feedback) return res.status(502).json({error:'AIから添削結果が返りませんでした。もう一度試してください。'});
+    return res.json({feedback:feedback.slice(0,9000)});
+  } catch (err) { console.error('HISTORIA writing feedback failed:',err && err.message || err); return res.status(502).json({error:'AI添削の処理に失敗しました。少し待って再試行してください。'}); }
+});
+
 app.post('/api/alter-history', async (req, res) => {
   const { civId, eraId, intervention, goal, previousOutcomes } = req.body || {};
   if (typeof intervention !== 'string' || !intervention.trim()) {
