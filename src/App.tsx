@@ -44,18 +44,21 @@ const ERA_CONTEXT: Record<string, string> = {
   'mongol-rise': 'モンゴル帝国の拡大は、騎馬軍の機動力だけでなく、部族連合の再編、情報伝達、降伏した都市や職人の活用によって進んだ。征服は破壊と人口移動をもたらした一方、ユーラシアの交易・外交・技術交流を結び直し、地域ごとに異なる支配体制を生んだ。'
 };
 function getDeepDive(era: Era) {
-  // 個別に書き込まれた解説がある時代は、それを優先して表示する。
   if (era.deepDive?.length) return era.deepDive;
-  const context = ERA_CONTEXT[era.id] || era.overview;
-  const facts = era.keyFacts;
+  const context = ERA_CONTEXT[era.id] || '';
+  const facts = era.keyFacts.filter(Boolean);
   const people = era.people.filter(p => !p.includes('特定の個人名は史料から分からない'));
+  const factText = facts.length ? facts.join(' ') : '個別の出来事を断定できる史料が限られるため、遺跡・遺物・同時代の記録を照合して考える。';
+  const peopleText = people.length ? people.join('、') : '特定の個人名が残らない人々や集団';
   return [
-    { heading: '時代の全体像と変化の背景', body: context + ' ' + era.overview + ' この時代を理解するには、直前の時代から何が引き継がれ、何が変化したのかを、政治・暮らし・生産・文化を結びつけて見ることが大切。' },
-    { heading: '政治・統治のしくみ', body: era.politics + ' 統治の実態を考える際は、支配者の方針だけでなく、それを実行した役人・地方勢力・軍事組織と、政策を支えた財源や人員にも注目したい。制度が作られた時期と、各地で定着した時期が異なる場合もある。' },
-    { heading: '人々の暮らしと社会', body: era.society + ' 社会全体を一つの姿として決めつけず、身分・職業・性別・地域による違いも考える必要がある。支配者や有名人の記録だけでなく、住居・墓・道具・食料の痕跡なども、一般の人々の生活を知る手がかりになる。' },
-    { heading: '生産・経済・交流', body: era.economy + ' 生産物がどこで作られ、どの道を通って運ばれ、誰が税や利益を得たのかを考えると、政治や戦争を支えた条件が見えてくる。交易・移住・技術の伝播は地域を結びつけた一方、輸送の途絶や動員の負担は社会を揺さぶることもあった。' },
-    { heading: '文化・技術と後世への影響', body: era.culture + ' 文化や技術は、信仰・教育・職人の技・権力者の保護・他地域との接触のなかで変化した。後世に有名になった制度や作品も、成立当時の目的と、その後に受け継がれる過程を分けて見ると理解しやすい。' },
-    { heading: '重要な出来事・人物と歴史の見方', body: 'この時代を読み解く主な手がかりは、' + facts.join(' ') + (people.length ? ' 関連する人物・集団には' + people.join('、') + 'がいる。人物の決断を、当時の制度・資源・同盟関係・地理的条件と合わせて考えることで、出来事の背景と結果をより具体的に理解できる。' : ' 個人名が史料に残っていない場合も、遺跡・遺物・文書などを通じて社会の特徴を探ることができる。') }
+    { heading: '1. 時代の全体像と成立の背景', body: era.years + 'にあたる' + era.name + 'では、' + era.overview + (context ? ' ' + context : '') + ' 年代や時代区分には地域差や研究上の議論がある場合があり、区切りを固定的に捉えるより、変化がどのように進んだかを確認することが大切。' },
+    { heading: '2. 政治・権力と統治のしくみ', body: era.politics + ' 支配者や制度の名称だけでなく、政策を実行した役人・地方勢力・軍事組織、そして財源や人員をどう確保したかに注目すると、権力が実際に働いた範囲が見えてくる。' },
+    { heading: '3. 人々の暮らしと社会構造', body: era.society + ' 支配層の記録を社会全体の姿と同一視せず、農村と都市、身分・職業・性別、地域による違いを考える。住居・墓・道具・食料の痕跡も、文献に現れにくい人々の暮らしを補う重要な証拠となる。' },
+    { heading: '4. 生産・経済・交易', body: era.economy + ' 食料や原材料がどこで生産され、どの交通路を通り、誰が税・貢納・利益を得たのかを考えると、国家や都市、軍隊を支えた条件が分かる。交易や技術の伝播は地域を結びつけた一方、戦争や輸送の途絶は供給と生活を不安定にすることもあった。' },
+    { heading: '5. 信仰・文化・技術', body: era.culture + ' 文化や技術は、信仰・教育・職人の技・権力者の保護・他地域との接触のなかで変化した。後世に有名になった作品や制度についても、成立当時の目的と、後代に意味づけが変わった過程を分けて考えたい。' },
+    { heading: '6. 押さえておきたい事実と出来事', body: factText + ' これらの事実を個別に暗記するだけでなく、何が変化のきっかけとなり、どの集団が関わり、どのような結果につながったかを前後関係で整理することが重要。' },
+    { heading: '7. 重要人物と集団の役割', body: 'この時代に関係する人物・集団として' + peopleText + 'が挙げられる。個人の能力だけで歴史を説明せず、当時の制度、資源、地理、同盟関係や社会の制約を合わせて見ると、なぜその選択が可能になり、どのような限界があったのかを理解できる。' },
+    { heading: '8. 歴史資料から分かること・分からないこと', body: '歴史像は、同時代の文書、後世に編さんされた記録、遺跡・遺物など異なる種類の資料を照らし合わせて作られる。勝者や支配層の記録には視点の偏りがあり、年代・人物比定・出来事の解釈に議論が残る場合もある。' + (era.sources.length ? ' 参考資料：' + era.sources.map(source=>source.label).join('、') + '。' : '') + ' 確実に分かる事実と、推定や議論が続く点を分けて学ぶことが、この時代を正確に理解する基本となる。' }
   ];
 }
 
@@ -181,7 +184,25 @@ const CIVILIZATIONS: Civilization[] = [
 
 function extraEra(civId:string,id:string,name:string,years:string,startYear:number,overview:string,keyFacts:string[],people:string[]=[]):Era {
   const civ=CIVILIZATIONS.find(c=>c.id===civId)!;
-  return {id,name,years,startYear,ruler:'時期・地域により異なる',overview,politics:'政治制度や権力関係は時期・地域ごとの史料に基づいて考える。',society:'身分や立場、都市と農村、地域によって暮らしは異なった。',economy:'農業・生産・税・交易が社会を支えたが、その比重は時代ごとに変化した。',culture:'考古資料や文字史料を照らし合わせ、後世の評価と当時の実態を区別する。',keyFacts,people,sources:[{label:'The Metropolitan Museum of Art',url:'https://www.metmuseum.org/toah/'},{label:'Encyclopaedia Britannica',url:'https://www.britannica.com/'}]};
+  const clues = keyFacts.join(' ');
+  const isPrehistoric = /縄文|旧石器|新石器|青銅器|鉄器時代|先史/.test(name + overview);
+  const isPolitical = /王朝|王国|帝国|幕府|共和国|統一|政権|政治|戦争|征服|革命|独立/.test(name + overview);
+  const isCultural = /文化|哲学|宗教|仏教|キリスト教|イスラム|ルネサンス|古典/.test(name + overview);
+  return {
+    id,name,years,startYear,ruler:'時期・地域により異なる',overview,
+    politics: isPolitical
+      ? overview + ' 権力の移り変わりは、軍事的な勝敗だけでなく、支配を正当化する考え方、地方勢力との関係、税や兵員を集める仕組みから見る必要がある。'
+      : 'この時期の政治的なまとまりは地域ごとに異なり、後世の国家制度をそのまま当てはめることはできない。集団間の協力・競争、指導者の役割、資源や土地の管理を手がかりに考える。',
+    society: isPrehistoric
+      ? '住居跡・墓・道具・食料残滓などの考古資料から、食生活や定住、共同作業、地域間交流を探る。資料が残りにくい人々の暮らしについては、断定を避け、地域差と年代差を考慮する。'
+      : '人々の経験は支配層だけでは説明できない。農村と都市、身分・職業・性別、地域ごとの違いに目を向け、制度や戦争、移住が日常生活に与えた影響を考える。',
+    economy: '食料生産や土地・労働の管理に加え、手工業、交易、税・貢納、交通路が社会をどう支えたかを考える。' + clues + ' これらの要素が誰に利益や負担をもたらしたかを確認すると、時代の変化を具体的に理解できる。',
+    culture: isCultural
+      ? overview + ' 信仰・思想・芸術は社会から切り離されたものではなく、権力、教育、交易、異なる文化との接触を通じて形づくられた。'
+      : '道具・建築・埋葬・文字資料などは、技術や信仰、価値観を知る手がかりになる。文化の変化を一方向の進歩とみなさず、地域ごとの選択や外部との交流を考える。',
+    keyFacts,people,
+    sources:[{label:'The Metropolitan Museum of Art',url:'https://www.metmuseum.org/toah/'},{label:'Encyclopaedia Britannica',url:'https://www.britannica.com/'}]
+  };
 }
 const EXTRA_ERAS:Record<string,Era[]> = {
  japan:[
