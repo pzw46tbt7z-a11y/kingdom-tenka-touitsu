@@ -395,22 +395,39 @@ function App() {
   const studyQuestionOptions=studyQuestionEra?(()=>{
     const facts=studyQuestionEra.keyFacts;
     const correctText=facts[studyIndex%facts.length]||studyQuestionEra.overview;
-    const sameCiv=allEras.filter(e=>e.civId===studyQuestionEra.civId&&e.id!==studyQuestionEra.id).flatMap(e=>e.keyFacts);
-    const otherCivs=allEras.filter(e=>e.civId!==studyQuestionEra.civId).flatMap(e=>e.keyFacts);
-    const unique=(items:string[])=>Array.from(new Set(items.filter(t=>t!==correctText&&!facts.includes(t))));
-    const samePool=unique(sameCiv);
-    const otherPool=unique(otherCivs);
+    // 誤答は別時代の史実をそのまま流用せず、同じ時代の知識の一部を変えた「もっともらしい誤情報」にする。
+    const replacements:[RegExp,string][]=[
+      [/世界でも古い/g,'比較的新しい'],[/古い/g,'新しい'],[/新しい/g,'古い'],
+      [/広がった/g,'衰退した'],[/発展した/g,'衰退した'],[/発達した/g,'衰退した'],[/強まった/g,'弱まった'],
+      [/確認されている/g,'確認されていない'],[/確認される/g,'確認されない'],[/存在した/g,'存在しなかった'],
+      [/地域差が大きい/g,'地域差がほとんどない'],[/地域差が小さい/g,'地域差が大きい'],
+      [/狩猟・採集・漁労/g,'水田稲作'],[/水田稲作/g,'狩猟・採集・漁労'],
+      [/定住集落/g,'移動を続ける小規模集団'],[/広域交流/g,'地域内だけの交流'],
+      [/首長層/g,'統一された官僚組織'],[/統一政権はなく/g,'強力な統一政権があり'],
+      [/仏教/g,'儒教'],[/青銅器/g,'鉄器'],[/鉄器/g,'青銅器'],
+      [/中国の史書/g,'日本国内の同時代の文字史料'],[/大陸との交流/g,'大陸との交流の停止'],
+      [/政治的連合/g,'中央集権国家'],[/中央集権化/g,'地方分権化'],
+      [/税収/g,'交易収入'],[/貴族/g,'農民'],[/農民/g,'貴族']
+    ];
+    const mutate=(fact:string,seed:number)=>{
+      const possible=replacements.filter(([pattern])=>pattern.test(fact));
+      if(possible.length){
+        const [pattern,withText]=possible[seed%possible.length];
+        return fact.replace(pattern,withText);
+      }
+      const endings:[RegExp,string][]=[
+        [/。$/,'とされるが、実際にはその反対の状況が一般的だった。'],
+        [/だった。$/,'ではなく、反対の仕組みが中心だった。'],
+        [/した。$/,'せず、別の方法が主流だった。']
+      ];
+      for(const [pattern,tail] of endings){if(pattern.test(fact))return fact.replace(pattern,tail);}
+      return 'この時代には'+fact.replace(/[。.]$/,'')+'という特徴は見られなかった。';
+    };
+    const sourceFacts=Array.from(new Set([...facts,studyQuestionEra.overview,studyQuestionEra.society,studyQuestionEra.culture].filter(Boolean)));
+    const falseOptions=sourceFacts.map((fact,i)=>mutate(fact,i+studyIndex)).filter(t=>t!==correctText);
     const distractorCount=studyDifficulty==='beginner'?2:3;
-    // 初級でも同じ文明の別時代から選択肢を作り、文明名だけで正解が分からないようにする。
-    // 中級は同文明と他文明を混ぜ、上級は時代の近い知識も含めて判別を難しくする。
-    let pool=studyDifficulty==='beginner'
-      ?[...samePool,...otherPool]
-      :studyDifficulty==='intermediate'
-        ?[...samePool.slice(0,Math.ceil(samePool.length/2)),...otherPool,...samePool.slice(Math.ceil(samePool.length/2))]
-        :[...samePool,...otherPool];
     const score=(value:string)=>Array.from(value).reduce((sum,ch)=>sum+ch.charCodeAt(0),0);
-    pool=unique(pool).sort((a,b)=>((score(a)*(studyIndex*13+7))%997)-((score(b)*(studyIndex*13+7))%997));
-    const distractors=pool.slice(0,distractorCount).map(text=>({text,correct:false}));
+    const distractors=Array.from(new Set(falseOptions)).slice(0,distractorCount).map(text=>({text,correct:false}));
     const opts=[{text:correctText,correct:true},...distractors];
     return opts.sort((a,b)=>((score(a.text)*(studyIndex*17+11))%991)-((score(b.text)*(studyIndex*17+11))%991));
   })():[];
