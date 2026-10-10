@@ -304,7 +304,7 @@ function App() {
   const [challengeText,setChallengeText] = useState('');
   const [notice,setNotice] = useState('');
   const [showMoreStudy,setShowMoreStudy] = useState(false);
-  const [studyTab,setStudyTab] = useState<'timeline'|'quiz'|'causes'|'progress'>('timeline');
+  const [studyTab,setStudyTab] = useState<'timeline'|'quiz'|'causes'|'writing'|'progress'>('timeline');
   const [studyCiv,setStudyCiv] = useState('all');
   const [studyIndex,setStudyIndex] = useState(0);
   const [studyChoice,setStudyChoice] = useState('');
