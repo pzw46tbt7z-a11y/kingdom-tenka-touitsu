@@ -395,7 +395,6 @@ function App() {
   const studyQuestionOptions=studyQuestionEra?(()=>{
     const facts=studyQuestionEra.keyFacts;
     const correctText=facts[studyIndex%facts.length]||studyQuestionEra.overview;
-    // 誤答は別時代の史実をそのまま流用せず、同じ時代の知識の一部を変えた「もっともらしい誤情報」にする。
     const replacements:[RegExp,string][]=[
       [/世界でも古い/g,'比較的新しい'],[/古い/g,'新しい'],[/新しい/g,'古い'],
       [/広がった/g,'衰退した'],[/発展した/g,'衰退した'],[/発達した/g,'衰退した'],[/強まった/g,'弱まった'],
@@ -410,24 +409,36 @@ function App() {
       [/税収/g,'交易収入'],[/貴族/g,'農民'],[/農民/g,'貴族']
     ];
     const mutate=(fact:string,seed:number)=>{
-      const possible=replacements.filter(([pattern])=>pattern.test(fact));
-      if(possible.length){
-        const [pattern,withText]=possible[seed%possible.length];
-        return fact.replace(pattern,withText);
+      let result=fact;
+      const count=studyDifficulty==='advanced'?2:1;
+      const used=new Set<number>();
+      for(let n=0;n<count;n++){
+        const available=replacements.map((r,i)=>({r,i})).filter(({r,i})=>!used.has(i)&&r[0].test(result));
+        if(available.length){
+          const chosen=available[Math.abs(seed*7+n*11)%available.length];
+          result=result.replace(chosen.r[0],chosen.r[1]);used.add(chosen.i);
+        }
       }
-      const endings:[RegExp,string][]=[
-        [/。$/,'とされるが、実際にはその反対の状況が一般的だった。'],
-        [/だった。$/,'ではなく、反対の仕組みが中心だった。'],
-        [/した。$/,'せず、別の方法が主流だった。']
-      ];
-      for(const [pattern,tail] of endings){if(pattern.test(fact))return fact.replace(pattern,tail);}
-      return 'この時代には'+fact.replace(/[。.]$/,'')+'という特徴は見られなかった。';
+      if(result===fact){
+        const endings:[RegExp,string][]=[
+          [/。$/,'とされるが、実際には反対の状況が一般的だった。'],
+          [/だった。$/,'ではなく、反対の仕組みが中心だった。'],
+          [/した。$/,'せず、別の方法が主流だった。']
+        ];
+        for(const [pattern,tail] of endings){if(pattern.test(result)){result=result.replace(pattern,tail);break;}}
+        if(result===fact)result='この時代には'+fact.replace(/[。.]$/,'')+'という特徴は見られなかった。';
+      }
+      return result;
     };
-    const sourceFacts=Array.from(new Set([...facts,studyQuestionEra.overview,studyQuestionEra.society,studyQuestionEra.culture].filter(Boolean)));
+    const sourceFacts=Array.from(new Set(studyDifficulty==='beginner'
+      ?facts
+      :studyDifficulty==='intermediate'
+        ?[...facts,studyQuestionEra.overview,studyQuestionEra.society].filter(Boolean)
+        :[...facts,studyQuestionEra.overview,studyQuestionEra.society,studyQuestionEra.culture,studyQuestionEra.politics,studyQuestionEra.economy].filter(Boolean)));
     const falseOptions=sourceFacts.map((fact,i)=>({text:mutate(fact,i+studyIndex),source:fact})).filter(item=>item.text!==correctText&&item.text!==item.source);
     const distractorCount=studyDifficulty==='beginner'?2:3;
     const score=(value:string)=>Array.from(value).reduce((sum,ch)=>sum+ch.charCodeAt(0),0);
-    const distractors=Array.from(new Map(falseOptions.map(item=>[item.text,item])).values()).slice(0,distractorCount).map(item=>({text:item.text,correct:false,explanation:'誤り：この選択肢は「'+item.source+'」の内容を一部変えたもの。正しくは、元の説明のとおり。'}));
+    const distractors=Array.from(new Map(falseOptions.map(item=>[item.text,item])).values()).slice(0,distractorCount).map(item=>({text:item.text,correct:false,explanation:'誤り：元の史実「'+item.source+'」の一部を変えてあるよ。どこが変わっているか比べてみよう。'}));
     const opts=[{text:correctText,correct:true,explanation:'正しい史実だよ。'} ,...distractors];
     return opts.sort((a,b)=>((score(a.text)*(studyIndex*17+11))%991)-((score(b.text)*(studyIndex*17+11))%991));
   })():[];
