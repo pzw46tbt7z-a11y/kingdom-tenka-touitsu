@@ -70,7 +70,7 @@ type Outcome = {
   causalChain: string[]; learningNotes: string[]; compareToReal: string;
   uncertainty: string; intervention: string; civName: string; eraName: string;
 };
-type View = 'play' | 'learn' | 'worldlines' | 'challenge';
+type View = 'play' | 'learn' | 'study' | 'worldlines' | 'challenge';
 type Mode = 'standard' | 'challenge' | 'free';
 
 const CIVILIZATIONS: Civilization[] = [
@@ -304,6 +304,14 @@ function App() {
   const [challengeText,setChallengeText] = useState('');
   const [notice,setNotice] = useState('');
   const [showMoreStudy,setShowMoreStudy] = useState(false);
+  const [studyTab,setStudyTab] = useState<'timeline'|'quiz'|'causes'|'progress'>('timeline');
+  const [studyCiv,setStudyCiv] = useState('all');
+  const [studyIndex,setStudyIndex] = useState(0);
+  const [studyChoice,setStudyChoice] = useState('');
+  const [studyChecked,setStudyChecked] = useState(false);
+  const [studyWrongOnly,setStudyWrongOnly] = useState(false);
+  const [studyStats,setStudyStats] = useState<{correct:number;wrong:number;wrongIds:string[];answeredIds:string[]}>({correct:0,wrong:0,wrongIds:[],answeredIds:[]});
+  const [showCauseDetails,setShowCauseDetails] = useState(false);
 
   const civ = CIVILIZATIONS.find(c=>c.id===civId) || defaultCiv;
   const era = civ.eras.find(e=>e.id===eraId) || civ.eras[0];
@@ -313,6 +321,7 @@ function App() {
 
   useEffect(()=>{
     setSavedWorlds(readSaved());
+    try { const raw=localStorage.getItem('historia-study-stats'); if(raw) setStudyStats(JSON.parse(raw)); } catch {}
     if ('serviceWorker' in navigator) {
       window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
     }
@@ -321,6 +330,7 @@ function App() {
   useEffect(()=>{
     try { localStorage.setItem('historia-worldlines',JSON.stringify(savedWorlds)); } catch {}
   },[savedWorlds]);
+  useEffect(()=>{ try { localStorage.setItem('historia-study-stats',JSON.stringify(studyStats)); } catch {} },[studyStats]);
 
   function chooseCiv(id:string) {
     const next=CIVILIZATIONS.find(c=>c.id===id)!;
@@ -377,6 +387,9 @@ function App() {
     return {question:'次のうち、'+era.name+'についての学習ポイントとして正しいのはどれ？', options:[answer, 'この時代の社会・政治は世界中で完全に同じ制度だった。','この時代の出来事は、後世の歴史研究でも一切議論がない。'], correct:answer};
   },[era]);
   const activeFacts=era.keyFacts;
+  const studyPool=studyWrongOnly?allEras.filter(e=>studyStats.wrongIds.includes(e.id)):allEras;
+  const studyQuestionEra=studyPool.length?studyPool[studyIndex%studyPool.length]:null;
+  const studyQuestionOptions=studyQuestionEra?[...studyQuestionEra.keyFacts.slice(0,3).map(text=>({text,correct:true})),...allEras.filter(e=>e.id!==studyQuestionEra.id).flatMap(e=>e.keyFacts).filter(text=>!studyQuestionEra.keyFacts.includes(text)).slice(studyIndex%Math.max(1,allEras.length),studyIndex%Math.max(1,allEras.length)+3).map(text=>({text,correct:false}))].sort((a,b)=>a.text.localeCompare(b.text,'ja')):[];
   const setEra=(id:string)=>{setEraId(id);setOutcomes([]);setActiveId('');setAttempts(mode==='challenge'?1:3);setErrorMessage('');};
 
   return <div className="app-shell">
@@ -385,6 +398,7 @@ function App() {
       <div className="side-label">EXPLORE THE PAST</div>
       <button className={'nav-item '+(view==='play'?'active':'')} onClick={()=>{setView('play');setMobileMenu(false);}}><Globe2 size={18}/>世界線を改変</button>
       <button className={'nav-item '+(view==='learn'?'active':'')} onClick={()=>{setView('learn');setMobileMenu(false);}}><BookOpen size={18}/>歴史を学ぶ</button>
+      <button className={'nav-item '+(view==='study'?'active':'')} onClick={()=>{setView('study');setMobileMenu(false);}}><GraduationCap size={18}/>勉強・復習</button>
       <button className={'nav-item '+(view==='worldlines'?'active':'')} onClick={()=>{setView('worldlines');setMobileMenu(false);}}><Layers3 size={18}/>保存した世界線 <span className="nav-count">{savedWorlds.length}</span></button>
       <button className={'nav-item '+(view==='challenge'?'active':'')} onClick={()=>{setView('challenge');setMobileMenu(false);}}><Trophy size={18}/>チャレンジ・共有</button>
       <div className="sidebar-spacer"/>
@@ -393,7 +407,7 @@ function App() {
     </aside>
     {mobileMenu&&<button className="scrim" onClick={()=>setMobileMenu(false)} aria-label="メニューを閉じる"/>}
     <main className="main">
-      <header className="topbar"><button className="icon-btn mobile-menu-btn" onClick={()=>setMobileMenu(true)} aria-label="メニューを開く"><Menu size={20}/></button><div className="breadcrumb"><span>HISTORIA</span><span className="crumb-slash">/</span><strong>{view==='play'?'HISTORY HACKER':view==='learn'?'HISTORY LIBRARY':view==='worldlines'?'SAVED WORLDLINES':'CHALLENGE MODE'}</strong></div><div className="top-status"><span className="live-dot"/><span>FACTS ≠ WHAT IF</span></div></header>
+      <header className="topbar"><button className="icon-btn mobile-menu-btn" onClick={()=>setMobileMenu(true)} aria-label="メニューを開く"><Menu size={20}/></button><div className="breadcrumb"><span>HISTORIA</span><span className="crumb-slash">/</span><strong>{view==='play'?'HISTORY HACKER':view==='learn'?'HISTORY LIBRARY':view==='study'?'STUDY CENTER':view==='worldlines'?'SAVED WORLDLINES':'CHALLENGE MODE'}</strong></div><div className="top-status"><span className="live-dot"/><span>FACTS ≠ WHAT IF</span></div></header>
       {notice&&<div className="notice-banner"><Check size={15}/>{notice}<button onClick={()=>setNotice('')}>閉じる</button></div>}
 
       {view==='play'&&<div className="content">
@@ -420,6 +434,17 @@ function App() {
       </div>}
 
       {view==='learn'&&<div className="content archive-content"><div className="eyebrow compact">HISTORICAL KNOWLEDGE BASE</div><h1 className="page-title">歴史を、<span>深く知る。</span></h1><p className="page-intro">文明と時代を選び、政治・社会・経済・文化を比較しよう。ここにある時代概要と重要ポイントは編集済みの学習データ。AIの仮想展開とは別に表示している。</p><div className="archive-warning"><ShieldCheck size={18}/><div><strong>史実を優先する設計</strong><p>年代には研究上の幅や区分の違いがあるため、「頃」「一般に」などを使い、議論がある点はその旨を明示しています。出典の本文も必ず確認してね。</p></div></div><div className="learn-civ-grid">{CIVILIZATIONS.map(c=><section className="learn-civ" key={c.id}><div className="learn-civ-title"><span>{c.symbol}</span><div><h2>{c.name}</h2><small>{c.subtitle}</small></div></div><p>{c.overview}</p>{c.eras.map(e=><details className="learn-era" key={e.id}><summary><span><strong>{e.name}</strong><small>{e.years}</small></span><ChevronDown size={15}/></summary><div className="learn-era-body"><p>{e.overview}</p><h4>政治・統治</h4><p>{e.politics}</p><h4>社会・暮らし</h4><p>{e.society}</p><h4>経済・交易</h4><p>{e.economy}</p><h4>文化・学問</h4><p>{e.culture}</p>{<><h4>詳しい歴史解説</h4>{getDeepDive(e).map((d,i)=><article className="archive-deep-dive" key={d.heading+'-'+i}><h5>{d.heading}</h5><p>{d.body}</p></article>)}</>}<h4>重要ポイント</h4><ul>{e.keyFacts.map(f=><li key={f}>{f}</li>)}</ul><h4>重要人物</h4><p>{e.people.join('・')}</p><h4>参考資料</h4>{e.sources.map(s=><a className="source-link" href={s.url} target="_blank" rel="noreferrer" key={s.url}>{s.label} ↗</a>)}</div></details>)}</section>)}</div><section className="quiz-panel"><div className="eyebrow compact">ACTIVE RECALL</div><h2>理解度チェック</h2><p>{quiz.question}</p><div className="quiz-options">{quiz.options.map(option=><button key={option} className={'quiz-option '+(quizChecked&&option===quiz.correct?'correct':'')} onClick={()=>{setQuizAnswer(option);setQuizChecked(true);}}>{option}</button>)}</div>{quizChecked&&<p className="quiz-feedback">{quizAnswer===quiz.correct?'正解。':'もう一度、時代の重要ポイントを確認しよう。'} 正答：{quiz.correct}</p>}<button className="secondary-btn" onClick={()=>{setQuizChecked(false);setQuizAnswer('');}}>もう一度</button></section></div>}
+
+
+      {view==='study'&&<div className="content archive-content study-center">
+        <div className="eyebrow compact">HISTORIA STUDY CENTER</div><h1 className="page-title">覚えるだけじゃない、<span>歴史の勉強。</span></h1>
+        <p className="page-intro">年代の流れをつかみ、問題で思い出し、因果関係を考えて、苦手を復習。学習記録はこの端末に保存されるよ。世界線を改変するゲームはメニューからいつでも戻れる。</p>
+        <div className="study-tabs"><button className={studyTab==='timeline'?'active':''} onClick={()=>setStudyTab('timeline')}><History size={16}/>年代・文明比較</button><button className={studyTab==='quiz'?'active':''} onClick={()=>setStudyTab('quiz')}><BookOpen size={16}/>一問一答</button><button className={studyTab==='causes'?'active':''} onClick={()=>setStudyTab('causes')}><GitBranch size={16}/>因果関係</button><button className={studyTab==='progress'?'active':''} onClick={()=>setStudyTab('progress')}><Trophy size={16}/>学習記録</button></div>
+        {studyTab==='timeline'&&<section className="study-tool-panel"><div className="study-tool-heading"><div><span className="small-label">CHRONOLOGY</span><h2>時代の流れを横断して見る</h2></div><label className="study-filter">文明<select value={studyCiv} onChange={e=>setStudyCiv(e.target.value)}><option value="all">すべての文明</option>{CIVILIZATIONS.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label></div><p className="muted-note">同じ時期に各地域で何が起きていたかを比べられる。年代は概数で、文明ごとの時代区分が重なることもあるよ。</p><div className="chronology-list">{allEras.filter(e=>studyCiv==='all'||e.civId===studyCiv).slice().sort((a,b)=>a.startYear-b.startYear).map(e=><article className="chronology-item" key={e.id}><div className="chronology-year">{e.startYear<0?'紀元前'+Math.abs(e.startYear):'西暦'+e.startYear}</div><div className="chronology-mark"/><div className="chronology-copy"><div className="chronology-title"><span className="chronology-symbol">{e.symbol}</span><div><strong>{e.civName}・{e.name}</strong><small>{e.years}</small></div></div><p>{e.overview}</p><button className="text-action" onClick={()=>{setCivId(e.civId);setEraId(e.id);setView('learn');}}>詳しい解説を読む <ArrowRight size={13}/></button></div></article>)}</div></section>}
+        {studyTab==='quiz'&&<section className="study-tool-panel"><div className="study-tool-heading"><div><span className="small-label">ACTIVE RECALL</span><h2>一問一答・苦手の復習</h2></div><span className="study-score">正解 {studyStats.correct} / 不正解 {studyStats.wrong}</span></div><p className="muted-note">既存の時代解説にある重要ポイントから出題。間違えた問題は「苦手だけ解く」で優先して出題するよ。</p><div className="quiz-mode-actions"><button className="secondary-btn" onClick={()=>{setStudyWrongOnly(false);setStudyIndex(0);setStudyChoice('');setStudyChecked(false);}}>通常出題</button><button className="secondary-btn" disabled={studyStats.wrongIds.length===0} onClick={()=>{setStudyWrongOnly(true);setStudyIndex(0);setStudyChoice('');setStudyChecked(false);}}>苦手だけ解く ({studyStats.wrongIds.length})</button></div><div className="study-question">{studyQuestionEra?<><span className="small-label">QUESTION {String(studyIndex+1).padStart(2,'0')}</span><h3>{studyQuestionEra.civName}・{studyQuestionEra.name}について、正しい重要ポイントはどれ？</h3>{studyQuestionOptions.map(option=><button key={option.text} className={'study-answer '+(studyChecked&&option.correct?'correct':'')+(studyChecked&&studyChoice===option.text&&!option.correct?' incorrect':'')} onClick={()=>{if(!studyChecked)setStudyChoice(option.text);}} disabled={studyChecked}>{option.text}</button>)}<div className="study-quiz-controls">{!studyChecked?<button className="primary-btn" disabled={!studyChoice} onClick={()=>{setStudyChecked(true);const ok=studyQuestionEra.keyFacts.slice(0,3).includes(studyChoice);setStudyStats(prev=>({correct:prev.correct+(ok?1:0),wrong:prev.wrong+(ok?0:1),wrongIds:ok?prev.wrongIds.filter(id=>id!==studyQuestionEra.id):Array.from(new Set([...prev.wrongIds,studyQuestionEra.id])),answeredIds:Array.from(new Set([...prev.answeredIds,studyQuestionEra.id]))}));}}>答え合わせ</button>:<><p className="quiz-feedback">{studyQuestionEra.keyFacts.slice(0,3).includes(studyChoice)?'正解！':'不正解。正しいポイントを緑色で確認しよう。'}</p><button className="primary-btn" onClick={()=>{setStudyIndex(i=>i+1);setStudyChoice('');setStudyChecked(false);}}>次の問題 <ArrowRight size={15}/></button></>}</div></>:<><h3>苦手問題はまだないよ。</h3><p>通常出題に切り替えて問題を解いてみよう。</p></>}</div></section>}
+        {studyTab==='causes'&&<section className="study-tool-panel"><div className="study-tool-heading"><div><span className="small-label">CAUSE & EFFECT</span><h2>出来事を「なぜ？」でつなぐ</h2></div></div><p className="muted-note">背景から社会・経済の変化、文化・技術への影響を整理しよう。歴史を単一の原因だけで説明しきるものではないよ。</p><div className="study-filter-row"><label>文明<select value={civId} onChange={e=>{const next=CIVILIZATIONS.find(c=>c.id===e.target.value);if(next){setCivId(next.id);setEraId(next.eras[0].id);}}}>{CIVILIZATIONS.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label><label>時代<select value={era.id} onChange={e=>setEraId(e.target.value)}>{civ.eras.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label></div><div className="cause-era-head"><span className="small-label">{civ.name} / {era.years}</span><h3>{era.name}</h3><p>{era.overview}</p></div><div className="cause-chain"><article><span>01 · 背景・統治</span><p>{era.politics}</p></article><div className="cause-arrow"><ArrowRight size={18}/></div><article><span>02 · 社会・経済の動き</span><p>{era.society}</p><p>{era.economy}</p></article><div className="cause-arrow"><ArrowRight size={18}/></div><article><span>03 · 文化・技術と影響</span><p>{era.culture}</p><p>{era.keyFacts[0]}</p></article></div><button className="secondary-btn" onClick={()=>setShowCauseDetails(v=>!v)}>{showCauseDetails?'重要ポイントを閉じる':'重要ポイントも確認する'} <ChevronDown size={14}/></button>{showCauseDetails&&<ul className="cause-facts">{era.keyFacts.map(f=><li key={f}>{f}</li>)}</ul>}</section>}
+        {studyTab==='progress'&&<section className="study-tool-panel"><div className="study-tool-heading"><div><span className="small-label">YOUR PROGRESS</span><h2>学習の記録</h2></div><button className="secondary-btn" onClick={()=>{if(window.confirm('学習記録をリセットする？'))setStudyStats({correct:0,wrong:0,wrongIds:[],answeredIds:[]});}}>記録をリセット</button></div><div className="study-progress-grid"><article><span>解答数</span><strong>{studyStats.correct+studyStats.wrong}</strong></article><article><span>正解</span><strong>{studyStats.correct}</strong></article><article><span>不正解</span><strong>{studyStats.wrong}</strong></article><article><span>苦手時代</span><strong>{studyStats.wrongIds.length}</strong></article></div><div className="progress-summary"><h3>苦手として記録されている時代</h3>{studyStats.wrongIds.length===0?<p>今は苦手登録された時代はないよ。問題に挑戦すると、間違えた時代がここに記録される。</p>:<div className="weak-era-list">{allEras.filter(e=>studyStats.wrongIds.includes(e.id)).map(e=><button key={e.id} onClick={()=>{setCivId(e.civId);setEraId(e.id);setStudyTab('causes');}}><strong>{e.civName}・{e.name}</strong><small>{e.years}</small></button>)}</div>}</div></section>}
+      </div>}
 
       {view==='worldlines'&&<div className="content archive-content"><div className="eyebrow compact">YOUR ALTERNATE HISTORIES</div><h1 className="page-title">保存した<span>世界線。</span></h1><p className="page-intro">保存した世界線はこの端末に保持されるよ。ブラウザのデータを消すと保存内容も消えるので注意。</p>{savedWorlds.length===0?<div className="saved-empty"><Layers3 size={30}/><h2>まだ世界線がないよ</h2><p>文明と時代を選び、歴史を改変して「保存」を押すと、ここに並ぶよ。</p><button className="secondary-btn" onClick={()=>setView('play')}>世界線を作る <ArrowRight size={14}/></button></div>:<div className="saved-list">{savedWorlds.map(w=><article className="saved-world-card" key={w.id}><div className="saved-mark"><GitBranch size={20}/></div><div className="saved-world-body"><span className="small-label">{w.civName} / {w.eraName}</span><h2>{w.title}</h2><p>{w.summary}</p><small>改変：{w.intervention}</small></div><div className="saved-world-actions"><button className="save-btn" onClick={()=>{setCivId(CIVILIZATIONS.find(c=>c.name===w.civName)?.id||'japan');setOutcomes([w]);setActiveId(w.id);setView('play');}}>開く</button><button className="save-btn" onClick={()=>shareWorld(w)}>共有</button><button className="save-btn danger" onClick={()=>setSavedWorlds(prev=>prev.filter(x=>x.id!==w.id))}>削除</button></div></article>)}</div>}</div>}
 
