@@ -247,22 +247,28 @@ const EXTRA_ERAS:Record<string,Era[]> = {
 };
 for (const civ of CIVILIZATIONS) {
  const additions = EXTRA_ERAS[civ.id] || [];
- const existingIds = new Set(civ.eras.map(e=>e.id));
  const normalizeEraName = (name: string) => name
    .replace(/[・･（）()「」『』\s]/g, '')
    .replace(/前期|中期|後期|初期|末期|前半|後半/g, '');
- const existingNames = civ.eras.map(e => normalizeEraName(e.name));
- civ.eras.push(...additions.filter(e => {
-   if (existingIds.has(e.id)) return false;
-   const candidate = normalizeEraName(e.name);
-   // 同一文明内で、同じ時代名や「○○時代・前期」のような細分名が
-   // 既存の時代と重なる場合は二重表示しない。
-   return !existingNames.some(name =>
+ const seenIds = new Set<string>();
+ const seenNames: string[] = [];
+ const combined = [...civ.eras, ...additions];
+ civ.eras = combined.filter(era => {
+   if (seenIds.has(era.id)) return false;
+   const candidate = normalizeEraName(era.name);
+   // 同一文明内で、同名の時代や既存時代の細分・別表記を重ねて表示しない。
+   const duplicate = seenNames.some(name =>
      name === candidate ||
      (name.length >= 3 && candidate.includes(name)) ||
      (candidate.length >= 3 && name.includes(candidate))
    );
- }));
+   if (duplicate) return false;
+   seenIds.add(era.id);
+   seenNames.push(candidate);
+   return true;
+ });
+ // すべての文明で、古い時代から新しい時代へ時系列順に表示する。
+ civ.eras.sort((a, b) => a.startYear - b.startYear);
 }
 
 
