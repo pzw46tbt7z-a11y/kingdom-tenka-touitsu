@@ -427,13 +427,10 @@ function App() {
         }
       }
       if(result===fact){
-        const endings:[RegExp,string][]=[
-          [/。$/,'とされるが、実際には反対の状況が一般的だった。'],
-          [/だった。$/,'ではなく、反対の仕組みが中心だった。'],
-          [/した。$/,'せず、別の方法が主流だった。']
-        ];
-        for(const [pattern,tail] of endings){if(pattern.test(result)){result=result.replace(pattern,tail);break;}}
-        if(result===fact)result='この時代には'+fact.replace(/[。.]$/,'')+'という特徴は見られなかった。';
+        // 史実の文を不自然な「反対の状況」などで水増しせず、自然な誤答文にする
+        const clean=fact.replace(/[。.]$/,'');
+        result='この説明は別の時代の特徴と混同しており、この時代には当てはまらない。';
+        if(/年/.test(clean)&&/した/.test(clean)) result=clean.replace(/した/,'する前に別の出来事が起きた');
       }
       return result;
     };
